@@ -1,0 +1,140 @@
+---
+title: "Building a Spam Filter"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Everyone gets spam, including but not limited to phone calls, emails, and text messages, and no one enjoys getting them. To counteract them in emails, there is a spam filter that can clean out the unwarranted emails from the incoming bunch. 
+
+Spam filters are based on a variety of concepts, but the one that will be created in this Notebook will be based off the multinomial Naive Bayes algorithm. To accurately execute this mission, the following steps need to be taken:
+
+1. Provide a *training set*, that will allow the computer to learn what is spam and not spam
+
+2. Calculate the probabilities for spam and non spam messages, and the conditional probabilites for the unique words within those groups
+
+3. Use a *cross-validation set*, in order to test out various alphas to maximize the prediction accuracy
+
+4. Finally, the *test set*, which uses the probabilities and chosen alpha value, predicts the spam and non-spam messages
+
+```{r}
+library(dplyr)
+library(readr)
+library(stringr)
+setwd("/Users/HerschelGupta/Documents/Dataquest/smsspamcollection")
+messages <- read_tsv("SMSSpamCollection",col_names = c("type","message"))
+spam <- messages %>% filter(type == "spam")
+ham <- messages %>% filter(type == "ham")
+p_spam <- (count(spam)/count(messages))*100
+p_ham <- (count(ham)/count(messages))*100
+
+```
+
+To evaluate the percentages of the spam and ham (non-spam) messages in the dataset, the library *dplyr* is necessary, as it provides access to the %>% pipeline which streamlines the calculations.
+
+Once the text file is loaded into the variable *messages*, it is filtered into the spam and ham portions. From there, the total rows from each portion divided by the total rows in the dataset provide the percentages for the spam and ham messages in the dataset.
+
+About 87% of the dataset is made of ham messages while the remaining 13% is spam messages.
+
+
+```{r}
+set.seed(1)
+rows <- nrow(messages)
+train_ind <- sample(1:rows,.8*rows,replace = FALSE)
+other_ind <- setdiff(1:rows,train_ind)
+
+training <- messages[train_ind,]
+crossval <- messages[other_ind[1:(length(other_ind)/2)],]
+testing <- messages[other_ind[((length(other_ind)/2) + 1):length(other_ind)],]
+
+p_ham_train <- ((training %>% filter(type == "ham") %>% count())/count(training))*100
+p_ham_c <- ((crossval %>% filter(type == "ham") %>% count())/count(crossval))*100
+p_ham_test <- ((test %>% filter(type == "ham") %>% count())/count(test))*100
+
+
+```
+
+Next, the dataset is split into the three critical portions, *training*, *cross validation*, and *test* with the training set taking 80% of the messages while the cross validation and test set split the remaining equally at 10%. 
+
+To do that randomly, the *sample* function selects row indices without replacement and by setting the seed to 1 keeps the random row indices the same in each iteration to preserve the integrity of the Notebook.
+
+```{r}
+training$message <- str_to_lower(training$message) %>%
+                    str_replace_all("[[:punct:][:digit:][\n][\t][\u0092\u0094\u0096]]"," ") %>%
+                    str_squish()
+
+```
+To be able to calculate the conditional probabilities the messages need to be cleaned out of all unusable characters such as punctuation, digits, and unicodes. As a result, the message column in the *training* set is converted to all lowercase, the extra spaces are removed, and then all the extra characters like punctuation and digits using *str_replace_all*.
+
+```{r}
+vocabulary <- unique(unlist(str_split(training$message," ")))
+n_vocab <- length(vocabulary)
+
+spam_train <- training %>% filter(type == "spam") %>% select(message)
+words_spam <- unique(unlist(str_split(spam_train," ")))
+n_spam <- length(words_spam)
+
+ham_train <- training %>% filter(type == "ham") %>% select(message)
+words_ham <- unique(unlist(str_split(ham_train," ")))
+n_ham <- length(words_ham)
+```
+
+In the conditional probabilities, there are a variety of values needed like the total number of words in the spam, non-spam, and all the messages. 
+
+The process for getting all these totals is the same, which begins with splitting all the messages and then using *unlist* to break down the list of lists. Finally, the *unique* function takes away all the duplicates and simplifies the list into the unique words.
+
+This process is repeated for the entire vocabulary, the spam messages, and the non-spam messages. To get the numerical total, the length of the array is used.
+
+```{r}
+library(purrr)
+p_spamtrain <- (count(spam_train)/count(training))*100
+p_hamtrain <- (count(ham_train)/count(training))*100
+
+count <- tibble(word = vocabulary,spam_count = 0,ham_count = 0)
+all_spam <- unlist(str_split(spam_train," "))
+all_ham <- unlist(str_split(ham_train," "))
+
+count$spam_count <- map_dbl(count$word,function(x) sum(all_spam %in% x))
+count$ham_count <- map_dbl(count$word,function(x) sum(all_ham %in% x))
+```
+
+```{r}
+classification <- function(sentence,alpha) {
+  cleaned_sent <- str_to_lower(sentence) %>%
+                    str_replace_all("[[:punct:][:digit:][\n][\t][\u0092\u0094\u0096]]"," ") %>%
+                    str_squish()
+  
+  words <- unlist(str_split(cleaned_sent," "))
+  checked_words <- words[words %in% vocabulary]
+  
+  alpha = alpha
+  probs_spam <- map_dbl(checked_words,function(x) (count$spam_count[count$word == x] + alpha)/(n_spam + (alpha*n_vocab)))
+  probs_ham <- map_dbl(checked_words,function(x) (count$ham_count[count$word == x] + alpha)/(n_ham + (alpha*n_vocab)))
+  
+  p_spam_msg <- p_spam * prod(probs_spam)
+  p_ham_msg <- p_ham * prod(probs_ham)
+  
+  ifelse(p_spam_msg > p_ham_msg,"spam","ham")
+}
+
+check_acc <- function(alpha,dataset) {
+  conf_matrix <- table(dataset$type,map_chr(dataset$message,function(x) classification(x,alpha)))
+
+  accuracy = (conf_matrix["ham","ham"] + conf_matrix["spam","spam"])/sum(conf_matrix)*100
+}
+
+alpha_1 <- check_acc(1,crossval)
+```
+
+```{r}
+alpha_grid <- seq(.1,1,by=.01)
+
+accuracies <- map_dbl(alpha_grid,function(x) check_acc(x,crossval))
+```
+
+
+```{r}
+final_test <-check_acc(.12,testing)
+```
+
+

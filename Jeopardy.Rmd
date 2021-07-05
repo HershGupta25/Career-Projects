@@ -1,0 +1,113 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Jeopardy is a very mentally strenous game and requires immense dedication to memorize all the trivia needed to excel at the game. With anything fair game, one would be spending weeks and weeks learning something that may never appear on the show. As a result, this Notebook focuses on analyzing the historical Jeopardy categories and understanding which ones are the most important to prioritize.
+
+```{r}
+# load various libraries for the notebook
+library(tidyr)
+library(dplyr)
+library(stringr)
+library(readr)
+
+# set appropriate working directory to load csv file 
+setwd("/Users/HerschelGupta/Documents/Dataquest")
+jeopardy <- read_csv("jeopardy.csv")
+```
+
+To prepare for the chi-squared calculations that are going to follow in this notebook, four packages were loaded, *tidyr*, *dplyr*, *stringr*, and *readr*. These all will provide seamless functions to test the hypotheses about the frequency of the Jeopardy categories.
+
+Using *readr*, the *jeopardy.csv* is laoded into the *jeopardy* variable.
+
+```{r}
+# altered columns to make future calculations seamless
+colnames(jeopardy) <- colnames(jeopardy) %>% str_to_lower() %>% str_replace_all(" ", "_")
+
+# removed Final Jeopardy rows by removing rows with non-numerical "value"
+cln_jeopardy <- jeopardy %>% filter(jeopardy$value != "None")
+
+# clean columns by removing punctuation 
+cln_jeopardy$value <- cln_jeopardy$value %>% str_replace_all("[$[:punct:]]","") %>% as.numeric()
+cln_jeopardy$category <- cln_jeopardy$category %>% str_to_lower() %>% str_replace_all("[:punct:]","")
+cln_jeopardy$question <- cln_jeopardy$question %>% str_to_lower() %>% str_replace_all("[:punct:]","")
+cln_jeopardy$answer <- cln_jeopardy$answer %>% str_to_lower() %>% str_replace_all("[:punct:]","")
+
+# break apart air date column into individual columns for each part of date and then convert to numeric
+cln_jeopardy <- separate(cln_jeopardy,air_date,c("year","month","day"),sep = "-") %>% 
+                mutate(year = as.numeric(year),month = as.numeric(month),day = as.numeric(day))
+```
+
+Above there was a bunch of cleaning done to the *jeopardy* variable in order to perfect it for the hypothesis testing.
+
+To begin, all the relevant columns should be forced into lowercase becuase when conducting the hyopthesis testing on frequency of certain categories, questions, or answers, the calculations are case sensitive. Also, the punctuation within the data is irrelevant and just clutters the results and should be removed.
+
+As a result, the column names are lowered and spaces are replaced with underscores to match a format. 
+
+With the Final Jeopardy having a value of None, those questions and answers can not be numerically analyzed and thus are filtered out, thus making the *cln_jeopardy* dataframe.
+
+Following the designed format, the value, category, question, and answer columns from *cln_jeopardy* are forced into lowercase and have their punctuation replaced. Specifically, the value category is converted to numeric from character to allow for seamless numerical analysis.
+
+Finally, the air date is broken to 3 individual numeric columns of *year*, *month*, and *day* to make filtering and comparing easier in the future.
+
+```{r}
+science_count <- sum(str_count(cln_jeopardy$category,"science"))
+not_science_count <- nrow(cln_jeopardy) - science_count
+chisq.test(c(science_count,not_science_count),p = c(1/3369,3368/3369))
+```
+
+With the p value being considerably lower that .05 and effectively 0, the null hypothesis is false that the science categories are more likely to occur than other categories.
+
+```{r}
+hist_count <- sum(str_count(cln_jeopardy$category,"history"))
+not_hist_count <- nrow(cln_jeopardy) - hist_count
+chisq.test(c(hist_count,not_hist_count),p = c(1/3369,3368/3369))
+```
+
+With the p value being considerably lower that .05 and effectively 0, the null hypothesis is false that the history categories are more likely to occur than other categories.
+
+```{r}
+shake_count <- sum(str_count(cln_jeopardy$category,"shakespeare"))
+not_shake_count <- nrow(cln_jeopardy) - shake_count
+chisq.test(c(shake_count,not_shake_count),p = c(1/3369,3368/3369))
+```
+
+With the p value being considerably lower that .05 and effectively 0, the null hypothesis is false that the Shakespeare categories are more likely to occur than other categories.
+
+```{r}
+terms_used <- c()
+cln_jeopardy <- cln_jeopardy %>% arrange(year,month,day)
+terms <- unique(unlist(str_split(cln_jeopardy$question," ")))
+terms_used <- terms[nchar(terms) >= 6]
+```
+
+```{r}
+# create tibble for consolidation of all the counts for the terms
+terms_counts <- tibble(terms = terms_used,high_count = 0,low_count = 0,p_val = 0)
+for (i in 1:length(terms_used)) {
+  # use str_detect to find the term in each question of the jeopardy dataframe
+  matches <- str_detect(cln_jeopardy$question,terms_used[i])
+  # use matches vector to get the questions' values
+  values <- cln_jeopardy[matches,]$value
+  # separate the high and low value questions
+  high_val <- values[values >= 800]
+  low_val <- values[values < 800]
+  #put the counts for each question type in the designated data frame
+  terms_counts[i,]$high_count <- length(high_val)
+  terms_counts[i,]$low_count <- length(low_val)
+  # Finally calculate the p value for each term to determine if needed to reject or accept the null hypothesis
+  if (length(high_val) != 0 & length(low_val != 0)) {
+      terms_counts[i,]$p_val <- chisq.test(c(length(high_val),length(low_val)),p = c(2/5,3/5))$p.value 
+  }
+}
+
+```
+
+```{r}
+mean((terms_counts$high_count + terms_counts$low_count) <= 5)
+```
+
+A large majority (85%) of the terms have a total frequency of 5 or less and the hypothesis testing is unreliable when the frequency is that low. As a result, it would be best to filter out these low frequency terms and only factor in the p-value of the other terms when deciding to reject or accept the null hypothesis.

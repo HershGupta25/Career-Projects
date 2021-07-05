@@ -1,0 +1,138 @@
+---
+title: "Analyzing Movie Ratings"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+This R Notebook will focus on determining the relationship between movie ratings and user votes, from IMDB, for the top 30 movies between March and July 2020. Using web scraping techniques, various details for the movies will be acquired, in order to visualize if the highest rated movies have the most user votes.
+
+```{r}
+library(rvest)
+library(dplyr)
+library(ggplot2)
+
+url <- "http://dataquestio.github.io/web-scraping-pages/IMDb-DQgp.html"
+
+wp_content <- read_html(url)
+```
+
+The *rvest*, *dplyr*, and *ggplot2* packages were loaded to efficiently web scrap, manipulate the acquried data, and plot the results, respectively.
+
+Additionally, the url was loaded to save it for the entire project. Creating the variable, *wp_content*, saves the content from the webpage that contains the top 30 movies from March to July 2020.
+
+```{r}
+titles <- wp_content %>% 
+  html_nodes(".lister-item-header a") %>% 
+  html_text()
+
+  print(titles)
+
+release_years <- wp_content %>% 
+  html_nodes(".text-muted.unbold") %>% 
+  html_text() %>% readr::parse_number()
+
+  print(release_years)
+```
+
+Using web scraping functions from *rvest*, the titles of the top 30 movies were able to be retrieved and stored in a character vector.
+
+Using similar techniques, the release years from these movies were also stored in a numeric vector. The initial return for the return years had each year enclosed in parantheses so *parse_number()* had to be used to remove them and then convert the character values to numeric values.
+
+```{r}
+runtimes <- wp_content %>% 
+  html_nodes(".runtime") %>% 
+  html_text() %>% readr::parse_number()
+
+  print(runtimes)
+
+genres <- wp_content %>% 
+  html_nodes(".genre") %>% 
+  html_text() %>% stringr::str_trim()
+
+  print(genres)
+```
+
+Just like for the release years, the run times were extracted from the IMDB webpage and then converted to numeric values using *parse_number()* to eliminate the "min" at the tail.
+
+Uniquely, the genres were extracted from the webpage like the previous 3 but use *str_trim()* from *stringr* to eliminate the white spaces before and after the genre strings to clean them up.
+
+```{r}
+ratings <- wp_content %>% 
+  html_nodes(".ratings-imdb-rating strong") %>% 
+  html_text() %>% as.numeric()
+
+  print(ratings)
+
+metascores <- wp_content %>% 
+  html_nodes(".metascore") %>% 
+  html_text() %>% stringr::str_trim()
+
+  print(metascores)
+```
+
+The ratings were extracted from the IMDB webpage and then converted to numeric values using *as.numeric()* because they began as character vectors.
+
+Like the genres, the metascores were extracted from the webpage but use *str_trim()* from *stringr* to eliminate the white spaces before and after the metascores to clean them up.
+
+```{r}
+votes <- wp_content %>% 
+  html_nodes(".text-muted+ span") %>% 
+  html_text() %>% readr::parse_number()
+
+  print(votes)
+```
+
+Just like for the run times, the user votes were extracted from the IMDB webpage and then converted to numeric values using *parse_number()* to eliminate the "," within the total.
+
+```{r}
+append_vector <- function(vector, inserted_indices, values){
+
+  ## Creating the current indices of the vector
+  vector_current_indices <- 1:length(vector)
+
+  ## Adding small amount of values (between 0 and 0.9) to the `inserted_indices`
+  new_inserted_indices <- inserted_indices + seq(0, 0.9, length.out = length(inserted_indices))
+
+  ## Appending the `new_inserted_indices` to the current vector indices
+  indices <- c(vector_current_indices, new_inserted_indices)
+
+  ## Ordering the indices
+  ordered_indices <- order(indices)
+
+  ## Appending the new value to the existing vector
+  new_vector <- c(vector, values)
+
+  ## Ordering the new vector wrt the ordered indices
+  new_vector[ordered_indices]
+}
+```
+
+Because inserting values into a vector in R is not trivial, there is this function that has been provided to make the process simpler and more efficient.
+
+```{r}
+metascores <- append_vector(metascores,c(1,1,1,13,24),NA)
+metascores <- metascores[-17]
+genres <- genres[-17]
+release_years <- release_years[-17]
+runtimes <- runtimes[-17]
+titles <- titles[-17]
+```
+
+Using the *append_vector()* the metascores vector had the missing values from some of the movies replaced with NA values to have the vector length be close to the other vectors.
+
+In order to make all the detail vectors equivalent in length, a row was removed from metascores, genres, release years, run times, and titles to match the ratings vector. With all equal lengths, a dataframe with all their details can be created.
+
+```{r}
+imdbmovies <- tibble(titles,release_years,runtimes,genres,ratings,metascores,votes) %>% mutate(ratings = floor(ratings))
+```
+
+Finally, the *imdbmovies* dataframe was created to summarize all the details for the top 30 movies between March and July 2020. To make the relationship more readable, the ratings were floored to group similar rated movies and show a more concise visualization.
+
+```{r}
+ggplot(imdbmovies,
+       aes(x = ratings, y = votes, group = ratings)) + 
+  geom_boxplot()
+```
+
+Finally, the ratings vs. the votes are plotted above and show that there is a positive linear correlation between the two. Better ratings, more votes!

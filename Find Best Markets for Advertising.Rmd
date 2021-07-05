@@ -1,0 +1,38 @@
+---
+title: "Find Best Markets for Advertising"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+This Notebook is focused on an e-commerce company who offers courses in programming. Most of them are in web and mobile development but some are focused on data science, game development, and others. With a new audience, the company is looking for the two best markets to advertise their diverse offering of products.
+
+To properly assess which market would be best, a survey would provide the necessary information but that is costly and cheaper alternatives should be considered. As a result, using freeCodeCamp, an e-learning platform that offers web development courses, which has a survey that attracted a diversely interested set of new coders gives an ideal data set for the question.
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+setwd("/Users/HerschelGupta/Documents/Dataquest/2017-new-coder-survey-master/clean-data") # Change this accordingly
+survey <- read.csv("2017-fCC-New-Coders-Survey-Data.csv",
+                   stringsAsFactors = FALSE) %>% tbl_df()
+```
+
+The package *dplyr* is loaded for efficient and effective dataframe manipulation. Accordingly, the data from the freeCodeCamp survey is read into the *survey* variable.
+
+Before the data is analyzed, it needs to be determined that it is an accurate representation of the population in question. 
+
+In the article that details the survey, it says that all the respondents are new to coding (< 5 years of experience) and after examining, there are columns that detail where the coders are located and how much free money they have to spend.
+
+```{r}
+summary <- survey %>% group_by(CountryLive) %>% summarize(`Free Money` = mean(MoneyForLearning,na.rm = TRUE),mean(MonthsProgramming,na.rm = TRUE)) %>% arrange(desc(`Free Money`)) %>% filter(CountryLive %in% c('United States of America','India','United Kingdom','Canada'))
+
+
+finalists <- survey %>% drop_na(MoneyForLearning,MonthsProgramming) %>%
+             mutate(MonthsProgramming = replace(MonthsProgramming,MonthsProgramming == 0,1)) %>%
+             mutate(Per_month = MoneyForLearning/MonthsProgramming) %>%
+             group_by(CountryLive) %>% 
+             summarize(`Free Money` = mean(Per_month)) %>%
+             filter(CountryLive %in% c('United States of America','India','United Kingdom','Canada'))
+```
+

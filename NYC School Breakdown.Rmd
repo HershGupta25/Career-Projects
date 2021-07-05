@@ -1,0 +1,62 @@
+---
+title: "NYC School Breakdown"
+author: Hersh Gupta
+date: July 4, 2020
+output: html_notebook
+---
+
+This project will focus on understanding NYC school districts and how the students, parents, and teachers' perception of these various factors affects the average school SAT score:
+
+1. Safety and Respect
+2. Communication
+3. Engagement
+4. Academics
+
+The data, released in 2011, is publicly available [here](https://data.cityofnewyork.us/Education/2011-NYC-School-Survey/mnz3-dyi8)
+
+I will begin by loading the packages I need.
+
+```{r}
+library(dplyr)
+library(readr)
+library(purrr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+```
+
+Next I will load the data into dataframes for ease of analysis. I used read_csv for the school's data because it is comma separated but used read_tsv for the surveys, as they are tab separated.
+
+```{r}
+combined <- read_csv("combined.csv")
+gened_survey <- read_tsv("masterfile11_gened_final.txt")
+speced_survey <- read_tsv("masterfile11_d75_final.txt")
+```
+
+With the survey data being so encompassing, it is best to simplify it so that it can be efficiently used for our analysis. As a result, I will be selecting the schools' information and the aggregate scores from the survey because the rest of the data is extraneous. 
+
+To make our lives even easier, I will combine the survey and school's data through an inner join (to leave only the schools that have data in both datasets).
+
+```{r}
+gened_simp <- gened_survey %>% filter(schooltype == "High School") %>% select(dbn,rr_s:aca_tot_11) 
+speced_simp <- speced_survey %>% select(dbn,rr_s:aca_tot_11)
+
+survey_simp <- rbind(gened_simp,speced_simp) %>% rename(DBN = dbn)
+
+combined <- inner_join(combined,survey_simp,by = "DBN")
+
+```
+
+To properly assess the relationships between the average SAT scores and the survey results of the schools, I will use a correlation matrix that will chracterize them with a numerical value. Also, with the expected NA values, it is vital to have "use = pairwise.complete.obs" to neglect them and still calculate the correlation.
+
+```{r}
+corr_mat <- combined %>% select(avg_sat_score,saf_p_11:aca_tot_11) %>% cor(use = "pairwise.complete.obs")
+```
+
+From the matrix, it can be seen that the students, parents, and teachers' perceptions of the same factor elicit a different relationship to the success of the school's academics, specifically the average SAT score. To further dive into this phenomenon, I will use box plots to visualize the differences in the various groups' perceptions.
+
+```{r}
+new_combined <- pivot_longer(combined,cols = c(saf_p_11:aca_tot_11),names_to = "survey_question",values_to = "percent")
+new_combined <- new_combined %>% mutate(responsetype = str_sub(survey_question,5,5),metric = str_sub(survey_question,1,3))
+```
+

@@ -1,0 +1,68 @@
+---
+title: "Fandango Movie Ratings Investigation"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. 
+
+In 2015, there was a report, by Walt Hickey, that Fandango rounded some of its ratings up, usually not more than a 1/2 star but sometimes more. As a result, this R Markdown Notebook will investigate the ratings of the Fandango movies before and after Hickey's report to see if there is any change.
+
+```{r}
+library(readr)
+library(dplyr)
+setwd("/Users/HerschelGupta/Documents/Dataquest/")
+before <- read_csv("fandango_score_comparison.csv")
+after <- read_csv("movie_ratings_16_17.csv")
+```
+
+First, readr and dplyr were loaded to assist in reading the csv files and manipulating the datadrames for imminent analysis. The correct working directory was set in order to read the csv files, where *before* contains the movie ratings before Hickey's report and *after* has the ones after the report.
+
+```{r}
+before <- before %>% select(c('FILM','Fandango_Stars','Fandango_Ratingvalue','Fandango_votes','Fandango_Difference'))
+after <- after %>% select(c('movie','year','fandango'))
+```
+
+The two dataframes were filtered to only include the columns that were pertinent to the investigation, so only columns that were fandango or movie related. 
+
+With the selection of movies in the *before* dataframe all having a score or review from the big 4 (Rotten Tomatoes, MetaCritic, IMDB, Fandango), it is not an exact representation of all movies, as it focuses on the most popular ones.
+The *after* dataframe has the same concern, in that it only focuses on the most popular films and thus can not be viewed as an ideal sample for all movies.
+
+With the lack of similarities between the samples and the intended population, the goal should be changed. Thus, the new goal will be focusing on checking Fandango's ratings for *popular* movies in 2015 and in 2016.
+
+```{r}
+library(stringr)
+ratings_2015 <- before %>% mutate(year = str_sub(FILM,-5,-2)) %>% filter(str_sub(FILM,-5,-2) == 2015)
+ratings_2016 <- after %>% filter(year == 2016)
+```
+
+Since only movies from 2015 and 2016 are the focus of the invesigation, those movies were separated from the *before* and *after* dataframes, respectively.
+
+```{r}
+ggplot(ratings_2015, aes(x = Fandango_Stars)) + 
+  geom_density() +
+  geom_density(data = ratings_2016,aes(x = fandango),color = "blue") +
+  labs(title = "Investigating Fandango Movie Ratings",x= "Fandango Movie Rating", y= "Probability") +
+  scale_x_continuous(breaks =seq(0,5,.5)) +
+  xlim(0,5)
+  
+
+```
+
+The combined density plots, above, shows the similarities and differences between the ratings before and after Hickey's report. 
+
+The ratings before the report show it to be skewed left with the highest probability of the ratings at 4.5. 
+
+After the Hickey report, the Fandango ratings in 2016 are skewed right from the 2015 ratings. They have a normal distribution like density plot, centered on 4 stars. The report could have caused this change in reverse skewing the ratings but correlation isnt causation.
+
+```{r}
+ratings_15_summ <- ratings_2015 %>%
+                    group_by(Fandango_Stars) %>%
+                    summarize(Freq = n()/nrow(ratings_2015))
+ratings_16_summ <- ratings_2016 %>%
+                    group_by(fandango) %>%
+                    summarize(Freq = n()/nrow(ratings_2016))
+
+ratings_15_summ
+ratings_16_summ
+```
+
